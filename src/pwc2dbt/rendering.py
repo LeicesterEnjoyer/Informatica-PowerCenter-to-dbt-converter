@@ -236,6 +236,7 @@ def _split_arguments(arguments: str) -> tuple[str, ...]:
 
     if quoted or depth != 0:
         raise ValueError("Unbalanced expression quotes or parentheses")
+
     parts.append(arguments[start:].strip())
     return tuple(parts)
 
@@ -259,6 +260,7 @@ def _top_level_greater_than(expression: str) -> int | None:
             elif character == ">" and depth == 0:
                 return index
         index += 1
+
     return None
 
 
@@ -282,6 +284,7 @@ def _translate_expression(expression: str) -> str:
     )
     if function is None:
         raise ValueError(f"Unsupported expression '{expression}'")
+
     function_name, raw_arguments = function.groups()
     arguments = _split_arguments(raw_arguments)
     if function_name.upper() == "ISNULL" and len(arguments) == 1:
@@ -291,6 +294,7 @@ def _translate_expression(expression: str) -> str:
             _translate_expression(argument) for argument in arguments
         )
         return f"CASE WHEN {condition} THEN {true_value} ELSE {false_value} END"
+
     raise ValueError(f"Unsupported expression function '{function_name}'")
 
 
@@ -353,8 +357,111 @@ def render_transformation(
             f"instance '{instance_name}' has unsupported "
             f"{transformation.transformation_type} configuration: {error}"
         ) from error
+
     raise RenderingError(
         f"Mapping '{ancestry.mapping_name}', target '{ancestry.target_name}', "
         f"instance '{instance_name}' has unsupported transformation type "
         f"'{transformation.transformation_type}'"
+    )
+
+
+def _transformation_order(ancestry: TargetAncestry) -> tuple[str, ...]:
+    available = {
+        instance.name
+        for instance in ancestry.instances.values()
+        if instance.instance_type == "SOURCE"
+    }
+    remaining = [
+        instance.name
+        for instance in ancestry.instances.values()
+        if instance.instance_type == "TRANSFORMATION"
+    ]
+    ordered: list[str] = []
+    while remaining:
+        ready = next(
+            (
+                instance_name
+                for instance_name in remaining
+                if {
+                    connector.from_instance
+                    for connector in _incoming(ancestry, instance_name)
+                }
+                <= available
+            ),
+            None,
+        )
+        if ready is None:
+            names = ", ".join(sorted(remaining))
+            raise RenderingError(
+                f"Mapping '{ancestry.mapping_name}', target "
+                f"'{ancestry.target_name}' has transformations that cannot be "
+                f"ordered from their reachable inputs: {names}"
+            )
+        
+        remaining.remove(ready)
+        available.add(ready)
+        ordered.append(ready)
+
+    return tuple(ordered)
+
+
+def _indent(sql: str) -> str:
+    return "\n".join(f"    {line}" for line in sql.splitlines())
+
+
+def _render_target_projection(
+    document: PowerCenterDocument,
+    ancestry: TargetAncestry,
+) -> str:
+    target_instance = ancestry.instances[ancestry.target_name]
+
+    target = document.targets.get(target_instance.transformation_name)
+    if target is None:
+        raise RenderingError(
+            f"Mapping '{ancestry.mapping_name}', target '{ancestry.target_name}' "
+            f"references missing target definition "
+            f"'{target_instance.transformation_name}'"
+        )
+
+    incoming = _incoming(ancestry, ancestry.target_name)
+    upstream_names = {connector.from_instance for connector in incoming}
+    if len(upstream_names) != 1:
+        raise RenderingError(
+            f"Mapping '{ancestry.mapping_name}', target '{ancestry.target_name}' "
+            "requires exactly one final upstream instance"
+        )
+
+    incoming_by_field = {connector.to_field: connector for connector in incoming}
+    projections: list[str] = []
+    for field in target.fields:
+        connector = incoming_by_field.get(field.name)
+        if connector is None:
+            raise RenderingError(
+                f"Mapping '{ancestry.mapping_name}', target '{ancestry.target_name}' "
+                f"has no incoming connector for target field '{field.name}'"
+            )
+        projections.append(
+            f"input.{_sql_name(connector.from_field)} AS {_sql_name(field.name)}"
+        )
+
+    upstream = _sql_name(next(iter(upstream_names)))
+    return (
+        "SELECT\n    "
+        + ",\n    ".join(projections)
+        + f"\nFROM {upstream} AS input"
+    )
+
+
+def render_model(
+    document: PowerCenterDocument,
+    ancestry: TargetAncestry,
+) -> str:
+    ctes = [
+        f"{_sql_name(instance_name)} AS (\n"
+        f"{_indent(render_transformation(document, ancestry, instance_name))}\n"
+        ")"
+        for instance_name in _transformation_order(ancestry)
+    ]
+    return "WITH\n" + ",\n".join(ctes) + "\n" + _render_target_projection(
+        document, ancestry
     )

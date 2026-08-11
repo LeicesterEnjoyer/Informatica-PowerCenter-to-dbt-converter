@@ -8,7 +8,7 @@ development. Do not invent entries retrospectively.
 | Date | Assumption | Evidence | Risk |
 |---|---|---|---|
 | 2026-08-11 | A reached source definition with a same-named XML target definition represents an upstream model that can be referenced with dbt `ref()`. | `STG_ORDERS` and `STG_CUSTOMERS` are produced as staging targets and later consumed as source definitions by the core mapping. | Matching names may not prove model dependency in arbitrary PowerCenter exports; the rule is guaranteed only for the selected vertical slice. |
-| 2026-08-11 | Lower-snake-case transformation instance names can serve as deterministic CTE relation identifiers when Milestone 4 composes the individually rendered transformation bodies. | The selected ancestry has distinct instance names after normalization, and the structure tests assert those relation identifiers. | Name collisions after normalization are not handled in the initial slice. |
+| 2026-08-11 | Lower-snake-case transformation instance names can serve as deterministic CTE relation identifiers when composes the individually rendered transformation bodies. | The selected ancestry has distinct instance names after normalization, and the structure tests assert those relation identifiers. | Name collisions after normalization are not handled in the initial slice. |
 
 ## Decisions
 
@@ -27,12 +27,16 @@ development. Do not invent entries retrospectively.
 | 2026-08-11 | Wrap reached transformation and configuration failures with mapping, target, instance, and transformation-type context. | Leak helper exceptions or silently ignore unsupported settings. | Focused tests demonstrated that a plain Joiner configuration `ValueError` lacked selection context before the wrapper was added. |
 | 2026-08-11 | Render SQL keywords and aggregate function names in uppercase while retaining lower-snake-case identifiers and lowercase dbt `ref()`. | Preserve the initial all-lowercase SQL output. | A consistent keyword convention improves generated SQL readability without changing its structure or semantics. |
 | 2026-08-11 | Use copy-and-replace test fixtures instead of mutating transformation mappings directly. | Mutate the nested dictionary directly or suppress the static type warning. | The models expose transformations through the read-only `Mapping` interface. Rebuilding the affected frozen dataclasses preserves test isolation and avoids contradicting that interface. |
+| 2026-08-11 | Compose only reachable transformations as dependency-ordered CTEs, then project target fields in XML definition order through incoming target connectors. | Hard-code the selected CTE chain or infer final columns from transformation names. | The supplied integration test confirms that generic connector lineage produces the nine `CUSTOMERS` fields in target order. |
+| 2026-08-11 | Expose conversion through `python -m pwc2dbt` and write the generated model as UTF-8 with a trailing newline. | Require callers to use the Python API or print SQL to standard output. | This implements the assignment's command-line and file-output contract without adding dbt project scaffolding. |
+| 2026-08-11 | Prepare executable integration-test SQL by replacing only the emitted `ref()` calls with in-memory DuckDB fixture relations. | Add a dbt project or make production rendering emit physical fixture table names. | This test-only substitution preserves the production dbt output while allowing the guaranteed vertical slice to be executed and verified in DuckDB. |
 
 ## Coding-agent mistakes
 
 | Date | Agent output or assumption | Why it was wrong | How it was discovered | Correction |
 |---|---|---|---|---|
 | 2026-08-11 | The agent generated `from src.pwc2dbt.parser import parse_powercenter` in `pwc2dbt/__init__.py`. | In a `src`-layout project, `src` is the package-discovery directory, not part of the import path. The installed package is named `pwc2dbt`. | Pytest failed during test collection with `ModuleNotFoundError: No module named 'src'`. | Replaced the import with the package-relative form `from .parser import parse_powercenter` and reran the complete test suite successfully. |
+| 2026-08-11 | The initial CTE orchestration kept remaining transformation names in a set. | Set iteration could change the order of independent ready CTEs between processes, making generated output nondeterministic even though dependencies remained valid. | Manual review immediately after the first passing integration and full-suite runs. | Replaced the set with ancestry insertion order and reran the focused integration test and complete suite successfully. |
 
 ## Unsupported behaviour
 
@@ -40,6 +44,7 @@ development. Do not invent entries retrospectively.
 |---|---|---|
 | Sessions and workflows | Not required by the selected target conversion or Milestone 1. | Parser ignores these elements. |
 | Raw source definitions and dbt `source()` resolution | Excluded from the approved vertical slice. | Relation resolution raises a contextual error when a reached source definition has no matching XML target definition. |
+| Router, Union, Sorter, Filter, Lookup, and general Custom transformations | Their semantics are outside the guaranteed vertical slice. | Rendering raises a contextual error when one is reachable from the selected target; unrelated branches remain ignored. |
 | Source Qualifier overrides, distinct selection, and sorted ports | Only the observed pass-through configuration is supported. | Rendering rejects non-empty SQL/join/filter/pre/post overrides, distinct selection, or nonzero sorted ports. |
 | Sorted Aggregator input and aggregate expressions outside the observed subset | Not required by the selected ancestry. | Rendering requires `Sorted Input=NO` and rejects expressions outside direct group-by plus single-column COUNT/MIN/MAX/SUM. |
 | Stateful Expression ports and broader expression grammar | Explicitly excluded from the vertical slice. | Rendering rejects variable ports and expression forms outside the documented direct/literal/`>`/`ISNULL`/`IIF` grammar. |
@@ -61,3 +66,7 @@ development. Do not invent entries retrospectively.
 | 2026-08-11 | Initial unsupported Joiner configuration test | Failed with a plain `ValueError: Only Master Outer Join is supported`; after contextual wrapping the focused tests reported 6 passed and the full suite 15 passed. |
 | 2026-08-11 | Initial stateful Expression, Source Qualifier filter, and sorted Aggregator tests | Each failed because no error was raised; after each focused guard the final rendering tests reported 9 passed and the full suite 18 passed. |
 | 2026-08-11 | SQL casing convention refactor | Updated rendering expectations failed in the four structure tests because emitted SQL still used lowercase tokens; after changing only keyword and aggregate-function casing, the focused suite reported 9 passed and the full suite 18 passed. |
+| 2026-08-11 | Initial supplied-XML integration test | Failed during collection with the expected `ModuleNotFoundError: No module named 'pwc2dbt.cli'`; after CLI, orchestration, target projection, and output implementation, the focused test passed and the full suite reported 19 passed. |
+| 2026-08-11 | Supplied-XML DuckDB integration | The compiled fixture query verified six aggregates, target-field order, null-to-zero handling, returning/new classification, exclusion of an unmatched master row, and preservation of an unmatched detail row with null projected master `CUSTOMER_ID`. |
+| 2026-08-11 | Deterministic CTE-order refactor | After replacing set iteration with ancestry insertion order, `python -m pytest tests/test_integration.py -q` reported 1 passed and `python -m pytest -q` reported 19 passed. |
+| 2026-08-11 | Initial README contract test | Failed because the README still stated that usage instructions would be added later; after documenting the implemented CLI, guaranteed slice, assumptions, exclusions, likely failure areas, and coding-agent mistake, the focused test passed and the full suite reported 20 passed. |

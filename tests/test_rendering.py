@@ -1,7 +1,7 @@
+import pytest
+
 from dataclasses import replace
 from pathlib import Path
-
-import pytest
 
 from pwc2dbt.graph import build_target_ancestry
 from pwc2dbt.parser import parse_powercenter
