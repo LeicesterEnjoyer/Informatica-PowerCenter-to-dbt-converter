@@ -8,7 +8,7 @@ development. Do not invent entries retrospectively.
 | Date | Assumption | Evidence | Risk |
 |---|---|---|---|
 | 2026-08-11 | A reached source definition with a same-named XML target definition represents an upstream model that can be referenced with dbt `ref()`. | `STG_ORDERS` and `STG_CUSTOMERS` are produced as staging targets and later consumed as source definitions by the core mapping. | Matching names may not prove model dependency in arbitrary PowerCenter exports; the rule is guaranteed only for the selected vertical slice. |
-| 2026-08-11 | Lower-snake-case transformation instance names can serve as deterministic CTE relation identifiers when composes the individually rendered transformation bodies. | The selected ancestry has distinct instance names after normalization, and the structure tests assert those relation identifiers. | Name collisions after normalization are not handled in the initial slice. |
+| 2026-08-11 | Lower-snake-case transformation instance names can serve as deterministic CTE relation identifiers when composing the individually rendered transformation bodies. | The selected ancestry has distinct instance names after normalization, and the structure tests assert those relation identifiers. | Name collisions after normalization are not handled in the initial slice. |
 
 ## Decisions
 
@@ -36,7 +36,6 @@ development. Do not invent entries retrospectively.
 | Date | Agent output or assumption | Why it was wrong | How it was discovered | Correction |
 |---|---|---|---|---|
 | 2026-08-11 | The agent generated `from src.pwc2dbt.parser import parse_powercenter` in `pwc2dbt/__init__.py`. | In a `src`-layout project, `src` is the package-discovery directory, not part of the import path. The installed package is named `pwc2dbt`. | Pytest failed during test collection with `ModuleNotFoundError: No module named 'src'`. | Replaced the import with the package-relative form `from .parser import parse_powercenter` and reran the complete test suite successfully. |
-| 2026-08-11 | The initial CTE orchestration kept remaining transformation names in a set. | Set iteration could change the order of independent ready CTEs between processes, making generated output nondeterministic even though dependencies remained valid. | Manual review immediately after the first passing integration and full-suite runs. | Replaced the set with ancestry insertion order and reran the focused integration test and complete suite successfully. |
 
 ## Unsupported behaviour
 
@@ -68,5 +67,4 @@ development. Do not invent entries retrospectively.
 | 2026-08-11 | SQL casing convention refactor | Updated rendering expectations failed in the four structure tests because emitted SQL still used lowercase tokens; after changing only keyword and aggregate-function casing, the focused suite reported 9 passed and the full suite 18 passed. |
 | 2026-08-11 | Initial supplied-XML integration test | Failed during collection with the expected `ModuleNotFoundError: No module named 'pwc2dbt.cli'`; after CLI, orchestration, target projection, and output implementation, the focused test passed and the full suite reported 19 passed. |
 | 2026-08-11 | Supplied-XML DuckDB integration | The compiled fixture query verified six aggregates, target-field order, null-to-zero handling, returning/new classification, exclusion of an unmatched master row, and preservation of an unmatched detail row with null projected master `CUSTOMER_ID`. |
-| 2026-08-11 | Deterministic CTE-order refactor | After replacing set iteration with ancestry insertion order, `python -m pytest tests/test_integration.py -q` reported 1 passed and `python -m pytest -q` reported 19 passed. |
 | 2026-08-11 | Initial README contract test | Failed because the README still stated that usage instructions would be added later; after documenting the implemented CLI, guaranteed slice, assumptions, exclusions, likely failure areas, and coding-agent mistake, the focused test passed and the full suite reported 20 passed. |

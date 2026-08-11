@@ -4,6 +4,49 @@ A deliberately scoped converter that reads an Informatica PowerCenter XML
 export and writes a dbt SQL model derived from the selected target's connector
 ancestry.
 
+## Project structure
+
+```text
+Informatica-PowerCenter-to-dbt-converter/
+├── README.md                              # Overview, installation, usage, scope, and limitations.
+├── pyproject.toml                         # Python project metadata and dependencies.
+├── .gitignore                             # Files and directories excluded from Git.
+│
+├── data/
+│   └── FLOWLINE_DEMO_JAFFLESHOP.xml       # Supplied PowerCenter repository export.
+│
+├── docs/
+│   ├── AGENTS.md                          # Instructions for AI-assisted development.
+│   ├── ASSIGNMENT.md                      # Original take-home assignment.
+│   ├── SPEC.md                            # Approved scope, assumptions, and acceptance criteria.
+│   ├── PLAN.md                            # TDD implementation milestones.
+│   └── DEVELOPMENT_LOG.md                 # Decisions, agent mistakes, exclusions, and evidence.
+│
+├── models/
+│   └── customers.sql                      # Example dbt model generated from the supplied XML.
+│
+├── src/
+│   └── pwc2dbt/
+│       ├── __init__.py                    # Package initialization and public exports.
+│       ├── __main__.py                    # Entry point for `python -m pwc2dbt`.
+│       ├── cli.py                         # Command-line argument parsing and error handling.
+│       ├── converter.py                   # End-to-end conversion and file-output orchestration.
+│       ├── expressions.py                 # PowerCenter expression-to-SQL translation.
+│       ├── graph.py                       # Target ancestry traversal and source resolution.
+│       ├── model.py                       # PowerCenter domain dataclasses.
+│       ├── parser.py                      # PowerCenter XML parsing.
+│       └── rendering.py                   # Transformation, CTE, and target SQL rendering.
+│
+├── tests/
+│   ├── test_parser.py                     # XML parser and supplied-file smoke tests.
+│   ├── test_graph.py                      # Target ancestry and dbt `ref()` resolution tests.
+│   ├── test_rendering.py                  # Transformation and error-handling tests.
+│   ├── test_integration.py                # CLI and in-memory DuckDB integration test.
+│   └── test_readme.py                     # README usage and documentation contract test.
+│
+└── .venv/                                 # Local ignored Python virtual environment.
+```
+
 ## Requirements and installation
 
 - Python 3.11 or newer.
@@ -12,7 +55,8 @@ ancestry.
 Create and activate a virtual environment:
 
 ```powershell
-python -m venv .venv .\.venv\Scripts\Activate.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
 Install the package and development dependencies from the repository root:
@@ -109,10 +153,13 @@ apparent business intent.
 
 ## Coding-agent mistake caught during development
 
-The coding agent initially generated `from src.pwc2dbt.parser` in the package
-initializer. In a src-layout project, `src` is a package-discovery directory,
-not part of the import name, so pytest failed with `ModuleNotFoundError`. The
-import was corrected to `from .parser`, and the complete suite was rerun.
+The coding agent initially generated
+`from src.pwc2dbt.parser import parse_powercenter` in the package initializer.
+In a src-layout project, `src` is the package-discovery directory rather than
+part of the import path. Pytest exposed the mistake during test collection with
+`ModuleNotFoundError: No module named 'src'`. I corrected it to the
+package-relative import `from .parser import parse_powercenter` and reran the
+complete test suite successfully.
 
 Detailed scope and implementation evidence are in
 [`docs/SPEC.md`](docs/SPEC.md), [`docs/PLAN.md`](docs/PLAN.md), and
