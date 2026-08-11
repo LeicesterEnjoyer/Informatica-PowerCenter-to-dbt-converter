@@ -22,8 +22,10 @@ provided PowerCenter XML mapping.
 ├── docs/
 │   ├── ASSIGNMENT.md
 │   ├── DEVELOPMENT_LOG.md
-│   └── SAMPLE_MAPPING.md
+│   ├── PLAN.md
+│   └── SPEC.md
 ├── AGENTS.md
+├── LICENSE
 └── README.md
 ```
 
